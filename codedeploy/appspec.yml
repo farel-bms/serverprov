@@ -7,7 +7,7 @@ Resources:
         Alias: live
         CurrentVersion: !GetAtt techno-lambda-order-management.Version
         TargetVersion: !GetAtt techno-lambda-order-management.Version
-
-Hooks:
-  - BeforeAllowTraffic: techno-lambda-health-check
-  - AfterAllowTraffic: techno-lambda-health-check
+# Hooks sengaja tidak digunakan karena health-check Lambda
+# memerlukan akses VPC (RDS) yang menyebabkan timeout saat
+# dipanggil sebagai CodeDeploy lifecycle hook.
+# Traffic shifting tetap berjalan via Canary10Percent5Minutes.

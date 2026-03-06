@@ -273,11 +273,7 @@ jobs:
                   "TargetVersion": "${{ steps.publish.outputs.VERSION }}"
                 }
               }
-            }],
-            "Hooks": [
-              { "BeforeAllowTraffic": "techno-lambda-health-check" },
-              { "AfterAllowTraffic":  "techno-lambda-health-check" }
-            ]
+            }]
           }
           APPSPEC
           aws s3 cp /tmp/appspec.json \
