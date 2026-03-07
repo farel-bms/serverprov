@@ -521,7 +521,7 @@
 <div id="page-settings" class="page p-6" style="max-width:640px;margin:0 auto;">
   <div class="mb-6">
     <h2 class="text-xl font-bold mb-1" style="color:var(--text)"><i class="fas fa-cog mr-2" style="color:#6366f1"></i>API Settings</h2>
-    <p class="text-sm" style="color:var(--text-muted)">Konfigurasi API endpoint dan key untuk koneksi ke backend AWS..</p>
+    <p class="text-sm" style="color:var(--text-muted)">Konfigurasi API endpoint dan key untuk koneksi ke backend AWS.</p>
   </div>
 
   <!-- Status banner -->
@@ -667,9 +667,10 @@ const SF_FAIL_STATES = ['PaymentFailed','InventoryFailed','OrderFailed'];
 // HELPERS
 // ══════════════════════════════════════
 async function api(path, method='GET', body=null) {
+  const base = CONFIG.API_URL.replace(/\/+$/, '');
   const opts = { method, headers: { 'Content-Type':'application/json', 'x-api-key': CONFIG.API_KEY } };
   if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(`${CONFIG.API_URL}${path}`, opts);
+  const res = await fetch(`${base}${path}`, opts);
   if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error||`HTTP ${res.status}`); }
   return res.json();
 }
@@ -1420,21 +1421,21 @@ async function saveSettings() {
   const region = document.getElementById('input-api-region').value;
 
   if (!url || !key) {
-    showToast('API URL dan API Key wajib diisi', 'error');
+    toast('API URL dan API Key wajib diisi', 'error');
     return;
   }
   if (!url.startsWith('https://')) {
-    showToast('API URL harus diawali https://', 'error');
+    toast('API URL harus diawali https://', 'error');
     return;
   }
 
   // Simpan ke localStorage
-  localStorage.setItem('techno_api_url', url);
+  localStorage.setItem('techno_api_url', url.replace(/\/+$/, ''));
   localStorage.setItem('techno_api_key', key);
   localStorage.setItem('techno_api_region', region);
 
   // Update CONFIG live (tanpa reload)
-  CONFIG.API_URL = url;
+  CONFIG.API_URL = url.replace(/\/+$/, '');
   CONFIG.API_KEY = key;
   CONFIG.REGION = region;
 
@@ -1452,7 +1453,7 @@ async function saveSettings() {
   document.getElementById('display-status').innerHTML = '<span class="badge-status badge-processing">Testing...</span>';
 
   try {
-    const res = await fetch(url + '/health', {
+    const res = await fetch(url.replace(/\/+$/, '') + '/health', {
       method: 'GET',
       headers: { 'x-api-key': key, 'Content-Type': 'application/json' }
     });
@@ -1463,17 +1464,31 @@ async function saveSettings() {
       resultEl.style.color = '#4ade80';
       resultEl.innerHTML = '<i class="fas fa-check-circle mr-2"></i><b>Koneksi berhasil!</b> API siap digunakan.';
       document.getElementById('display-status').innerHTML = '<span class="badge-status badge-completed">Connected</span>';
-      showToast('Konfigurasi tersimpan & koneksi berhasil!', 'success');
+      toast('Konfigurasi tersimpan & koneksi berhasil!', 'success');
     } else {
       throw new Error('HTTP ' + res.status);
     }
   } catch (e) {
-    resultEl.style.background = 'rgba(239,68,68,0.1)';
-    resultEl.style.border = '1px solid rgba(239,68,68,0.3)';
-    resultEl.style.color = '#f87171';
-    resultEl.innerHTML = '<i class="fas fa-times-circle mr-2"></i><b>Gagal:</b> ' + e.message + '. Periksa URL dan API Key.';
-    document.getElementById('display-status').innerHTML = '<span class="badge-status badge-failed">Failed</span>';
-    showToast('Konfigurasi tersimpan, tapi koneksi gagal', 'error');
+    const isCors = e instanceof TypeError && e.message === 'Failed to fetch';
+    if (isCors) {
+      resultEl.style.background = 'rgba(245,158,11,0.1)';
+      resultEl.style.border = '1px solid rgba(245,158,11,0.3)';
+      resultEl.style.color = '#fbbf24';
+      resultEl.innerHTML =
+        '<i class="fas fa-exclamation-triangle mr-2"></i><b>Konfigurasi tersimpan.</b> ' +
+        'Test browser diblok CORS — ini normal jika CORS belum aktif di API Gateway. ' +
+        '<br><span style="color:var(--text-muted);font-size:.8rem">Verifikasi manual: ' +
+        '<code style="color:#a5b4fc">curl -s -H \"x-api-key: YOUR_KEY\" ' + url.replace(/\/+$/, '') + '/health</code></span>';
+      document.getElementById('display-status').innerHTML = '<span class="badge-status badge-processing">Saved</span>';
+      toast('Konfigurasi tersimpan. Verifikasi via curl atau coba buka dashboard.', 'info');
+    } else {
+      resultEl.style.background = 'rgba(239,68,68,0.1)';
+      resultEl.style.border = '1px solid rgba(239,68,68,0.3)';
+      resultEl.style.color = '#f87171';
+      resultEl.innerHTML = '<i class="fas fa-times-circle mr-2"></i><b>Gagal:</b> ' + e.message + '. Periksa URL dan API Key.';
+      document.getElementById('display-status').innerHTML = '<span class="badge-status badge-failed">Failed</span>';
+      toast('Koneksi gagal - periksa URL dan API Key', 'error');
+    }
   }
 }
 
@@ -1490,7 +1505,7 @@ function clearSettings() {
   document.getElementById('display-status').innerHTML = '<span class="badge-status badge-pending">Belum ditest</span>';
   updateConfigDisplay();
   checkConfigWarning();
-  showToast('Konfigurasi direset', 'info');
+  toast('Konfigurasi direset', 'info');
 }
 
 function checkConfigWarning() {

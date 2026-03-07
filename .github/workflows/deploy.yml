@@ -374,19 +374,41 @@ jobs:
 
       - name: Wait for Amplify build
         run: |
-          for i in $(seq 1 30); do
+          APP_ID="${{ secrets.AMPLIFY_APP_ID }}"
+          BRANCH="${{ github.ref_name }}"
+          JOB_ID="${{ steps.amplify.outputs.JOB_ID }}"
+          for i in $(seq 1 40); do
             STATUS=$(aws amplify get-job \
-              --app-id "${{ secrets.AMPLIFY_APP_ID }}" \
-              --branch-name ${{ github.ref_name }} \
-              --job-id "${{ steps.amplify.outputs.JOB_ID }}" \
+              --app-id "$APP_ID" \
+              --branch-name "$BRANCH" \
+              --job-id "$JOB_ID" \
               --region ${{ env.AWS_REGION }} \
               --query 'job.summary.status' --output text --no-cli-pager)
-            echo "Attempt $i/30 - Status: $STATUS"
-            if [ "$STATUS" = "SUCCEED" ]; then echo "Amplify succeeded"; exit 0; fi
-            if [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELLED" ]; then echo "Amplify $STATUS"; exit 1; fi
+            echo "Attempt $i/40 - Status: $STATUS"
+            if [ "$STATUS" = "SUCCEED" ]; then
+              echo "Amplify build succeeded!"
+              AMPLIFY_URL=$(aws amplify get-branch \
+                --app-id "$APP_ID" --branch-name "$BRANCH" \
+                --region ${{ env.AWS_REGION }} \
+                --query 'branch.displayName' --output text --no-cli-pager 2>/dev/null || echo "")
+              echo "Frontend URL: https://${BRANCH}.$(aws amplify get-app --app-id $APP_ID --region ${{ env.AWS_REGION }} --query 'app.defaultDomain' --output text --no-cli-pager 2>/dev/null || echo 'check-amplify-console')"
+              exit 0
+            fi
+            if [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELLED" ]; then
+              echo "Amplify build $STATUS - fetching step details..."
+              aws amplify get-job \
+                --app-id "$APP_ID" \
+                --branch-name "$BRANCH" \
+                --job-id "$JOB_ID" \
+                --region ${{ env.AWS_REGION }} \
+                --query 'job.steps[?status==`FAILED`].[stepName,statusReason]' \
+                --output table --no-cli-pager 2>/dev/null || true
+              echo "Check full logs: AWS Console > Amplify > $APP_ID > $BRANCH > Job $JOB_ID"
+              exit 1
+            fi
             sleep 30
           done
-          echo "Timeout waiting for Amplify"
+          echo "Timeout - check Amplify console"
           exit 1
 
   # ─── JOB 6: Notify ───────────────────────────────────────────

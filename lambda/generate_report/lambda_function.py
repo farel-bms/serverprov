@@ -177,9 +177,17 @@ def lambda_handler(event, context):
 
         return {
             'statusCode': 200,
-            'report_date': report_date,
-            's3_key': s3_key,
-            'presigned_url': presigned_url
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,x-api-key,X-Api-Key',
+                'Access-Control-Allow-Methods': 'GET,OPTIONS'
+            },
+            'body': json.dumps({
+                'report_date': report_date,
+                's3_key': s3_key,
+                'presigned_url': presigned_url
+            })
         }
 
     except Exception as e:
