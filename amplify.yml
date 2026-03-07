@@ -3,19 +3,22 @@ frontend:
   phases:
     preBuild:
       commands:
-        - echo "=== Techno OMS Frontend Build ==="
-        - echo "Commit: $AWS_COMMIT_ID"
-        - echo "Working dir: $(pwd)"
-        - ls -la
-        - test -d frontend && echo "frontend/ dir OK" || (echo "ERROR: frontend/ not found" && ls -la && exit 1)
-        - test -f frontend/index.html && echo "index.html OK ($(wc -c < frontend/index.html) bytes)" || (echo "ERROR: index.html not found" && exit 1)
+        - "echo '========== DEBUG INFO =========='"
+        - "echo 'Current directory: $(pwd)'"
+        - "echo 'Directory structure:'"
+        - "ls -la"
+        - "echo '================================='"
+        - "echo 'Checking frontend directory:'"
+        - "if [ -d 'frontend' ]; then echo 'frontend exists'; ls -la frontend/; else echo 'frontend NOT FOUND'; fi"
+        - "echo '================================='"
+        - "test -f frontend/index.html && echo '✓ index.html found' || (echo '✗ index.html NOT FOUND' && exit 1)"
     build:
       commands:
-        - echo "Static HTML - no build needed"
-        - ls -la frontend/
+        - "echo 'No build step required - static HTML'"
     postBuild:
       commands:
-        - echo "Build complete"
+        - "echo 'Build done'"
+        - "ls -la frontend/"
   artifacts:
     baseDirectory: frontend
     files:
