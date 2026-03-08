@@ -61,8 +61,47 @@ def response(status_code, body):
     }
 
 
+def validate_order_sf(event):
+    """Handler untuk Step Functions action: validate"""
+    try:
+        items = event.get('items', [])
+        customer_id = event.get('customerId', '')
+        total_amount = event.get('totalAmount', 0)
+
+        errors = []
+        if not items:
+            errors.append('items kosong')
+        if not customer_id:
+            errors.append('customerId kosong')
+        if not total_amount or float(total_amount) <= 0:
+            errors.append('totalAmount tidak valid')
+        for item in items:
+            # Support both camelCase (productId) and snake_case (product_id)
+            pid = item.get('productId') or item.get('product_id')
+            if not pid:
+                errors.append('productId kosong')
+            if not item.get('quantity') or int(item.get('quantity', 0)) <= 0:
+                errors.append('quantity tidak valid')
+
+        is_valid = len(errors) == 0
+        return {
+            **event,
+            'isValid': is_valid,
+            'validationErrors': errors,
+            'validationMessage': 'OK' if is_valid else ', '.join(errors)
+        }
+    except Exception as e:
+        return {**event, 'isValid': False, 'validationErrors': [str(e)]}
+
+
 def lambda_handler(event, context):
     logger.info(json.dumps({'event': event}))
+
+    # ── Step Functions invocation (bukan HTTP) ──────────────────
+    # Dipanggil dari ASL dengan payload: {"action": "validate", ...}
+    action = event.get('action', '')
+    if action == 'validate':
+        return validate_order_sf(event)
 
     http_method = event.get('httpMethod', '')
     path = event.get('path', '')
