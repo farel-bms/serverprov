@@ -14,4 +14,4 @@ README-JURI.md
 .github\workflows\deploy.yml_
 step_function/
 .github/workflows/deploy.yml_
-step_functions/order-workflows.json
+step_functions/order-workflow.json
