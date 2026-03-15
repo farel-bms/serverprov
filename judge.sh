@@ -892,9 +892,28 @@ if ! skip_step 5; then
         --query "LayerVersions[0].LayerVersionArn" \
         --output text 2>/dev/null || echo "")
 
+    # Auto-detect apakah layer ada tapi psycopg2 broken
+    # Cek dengan invoke test kecil di Lambda health_check
     if [ -n "$LAYER_ARN" ] && [ "$LAYER_ARN" != "None" ] && [ "$FORCE_LAYER" != "true" ]; then
-        ok "Layer sudah ada, skip: $(echo $LAYER_ARN | awk -F: '{print $(NF-1)":"$NF}')"
-        warn "  psycopg2 error? Rebuild layer: FORCE_LAYER=true ./judge.sh deploy $STUDENT_NAME $EMAIL 5"
+        log "  Verifikasi layer psycopg2 compatibility..."
+        _PSYCO_TEST=$(aws lambda invoke \
+            --function-name "techno-lambda-health-check" \
+            --payload '{"action":"test"}' \
+            --region "$REGION" \
+            --cli-binary-format raw-in-base64-out \
+            /tmp/_layer_test.json 2>&1 || echo "invoke_error")
+        _TEST_RESULT=$(cat /tmp/_layer_test.json 2>/dev/null || echo "")
+        if echo "$_TEST_RESULT" | grep -q "psycopg2\|ImportModuleError\|No module named"; then
+            warn "  Layer ada tapi psycopg2 BROKEN — force rebuild..."
+            FORCE_LAYER="true"
+        else
+            ok "Layer sudah ada dan OK, skip: $(echo $LAYER_ARN | awk -F: '{print $(NF-1)":"$NF}')"
+        fi
+    fi
+
+    if [ -n "$LAYER_ARN" ] && [ "$LAYER_ARN" != "None" ] && [ "$FORCE_LAYER" != "true" ]; then
+        ok "Layer skip (verified OK)"
+        warn "  Untuk force rebuild: FORCE_LAYER=true ./judge.sh deploy $STUDENT_NAME $EMAIL 5"
     else
         if [ "$FORCE_LAYER" = "true" ]; then
             warn "FORCE_LAYER=true — hapus semua layer version lama dulu..."
@@ -1766,16 +1785,38 @@ PYEOF
             --app-id "$AMPLIFY_APP_ID" --branch-name main \
             --region "$REGION" --no-cli-pager > /dev/null 2>&1 || true
 
-        # Stop running jobs
-        RUNNING_JOB=$(aws amplify list-jobs \
-            --app-id "$AMPLIFY_APP_ID" --branch-name main \
-            --region "$REGION" --max-results 1 \
-            --query "jobSummaries[?status=='RUNNING'].jobId | [0]" \
-            --output text 2>/dev/null || echo "")
-        [ -n "$RUNNING_JOB" ] && [ "$RUNNING_JOB" != "None" ] && \
-            aws amplify stop-job --app-id "$AMPLIFY_APP_ID" \
-            --branch-name main --job-id "$RUNNING_JOB" \
-            --region "$REGION" --no-cli-pager > /dev/null 2>&1 || true
+        # Stop ALL running/pending jobs — wajib sebelum create-deployment
+        # (Amplify BadRequestException jika ada job yang belum selesai)
+        log "  Stopping all running/pending Amplify jobs..."
+        for _ATTEMPT in 1 2 3; do
+            _RUNNING=$(aws amplify list-jobs \
+                --app-id "$AMPLIFY_APP_ID" --branch-name main \
+                --region "$REGION" --max-results 10 \
+                --query "jobSummaries[?status=='RUNNING'||status=='PENDING'].jobId" \
+                --output text 2>/dev/null || echo "")
+            [ -z "$_RUNNING" ] || [ "$_RUNNING" = "None" ] && break
+            for _JID in $_RUNNING; do
+                [ "$_JID" = "None" ] && continue
+                aws amplify stop-job \
+                    --app-id "$AMPLIFY_APP_ID" --branch-name main \
+                    --job-id "$_JID" --region "$REGION" \
+                    --no-cli-pager > /dev/null 2>&1 || true
+                log "    Stopped job: $_JID"
+            done
+            sleep 8
+        done
+        # Poll sampai benar-benar kosong (max 90 detik)
+        for _W in $(seq 1 18); do
+            _STILL=$(aws amplify list-jobs \
+                --app-id "$AMPLIFY_APP_ID" --branch-name main \
+                --region "$REGION" --max-results 5 \
+                --query "jobSummaries[?status=='RUNNING'||status=='PENDING'].jobId" \
+                --output text 2>/dev/null || echo "")
+            ( [ -z "$_STILL" ] || [ "$_STILL" = "None" ] ) && break
+            log "  Waiting for jobs to stop [$_W/18]: $_STILL"
+            sleep 5
+        done
+        log "  No running jobs — proceeding with create-deployment"
 
         DEPLOY_RESP=$(aws amplify create-deployment \
             --app-id "$AMPLIFY_APP_ID" --branch-name main \

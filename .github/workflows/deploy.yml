@@ -352,6 +352,41 @@ jobs:
             --region ${{ env.AWS_REGION }} \
             --no-cli-pager 2>/dev/null || true
 
+          # Stop semua job yang masih running/pending sebelum buat deployment baru
+          echo "Checking for running jobs..."
+          RUNNING_JOBS=$(aws amplify list-jobs \
+            --app-id "$APP_ID" \
+            --branch-name "$BRANCH" \
+            --region ${{ env.AWS_REGION }} \
+            --max-results 10 \
+            --query 'jobSummaries[?status==`RUNNING` || status==`PENDING`].jobId' \
+            --output text --no-cli-pager 2>/dev/null || echo "")
+          for JID in $RUNNING_JOBS; do
+            echo "  Stopping job: $JID"
+            aws amplify stop-job \
+              --app-id "$APP_ID" \
+              --branch-name "$BRANCH" \
+              --job-id "$JID" \
+              --region ${{ env.AWS_REGION }} \
+              --no-cli-pager 2>/dev/null || true
+          done
+          # Tunggu sampai benar-benar tidak ada job yang running
+          for i in $(seq 1 20); do
+            STILL_RUNNING=$(aws amplify list-jobs \
+              --app-id "$APP_ID" \
+              --branch-name "$BRANCH" \
+              --region ${{ env.AWS_REGION }} \
+              --max-results 5 \
+              --query 'jobSummaries[?status==`RUNNING` || status==`PENDING`].jobId' \
+              --output text --no-cli-pager 2>/dev/null || echo "")
+            if [ -z "$STILL_RUNNING" ] || [ "$STILL_RUNNING" = "None" ]; then
+              echo "  No running jobs, proceeding..."
+              break
+            fi
+            echo "  [$i/20] Still running: $STILL_RUNNING — waiting 5s..."
+            sleep 5
+          done
+
           # create-deployment → dapat zipUploadUrl + jobId
           DEPLOY_RESP=$(aws amplify create-deployment \
             --app-id "$APP_ID" \
