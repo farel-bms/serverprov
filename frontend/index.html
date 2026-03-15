@@ -68,10 +68,7 @@
     select.input-custom option{background:var(--surface-2);}
 
     /* Topbar */
-    .topbar{background:rgba(24,24,37,.9);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;gap:8px;flex-wrap:wrap;}
-    #topbar-config{flex-shrink:1;min-width:0;}
-    @media(max-width:1200px){#tb-api-url{width:180px!important}}
-    @media(max-width:900px){#tb-api-url{width:120px!important}#tb-api-key{width:80px!important}}
+    .topbar{background:rgba(24,24,37,.9);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:8px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;gap:8px;min-width:0;}
 
     /* Spinners & dots */
     .loading-spinner{width:20px;height:20px;border:2px solid rgba(99,102,241,.3);border-top-color:#6366f1;border-radius:50%;animation:spin .8s linear infinite;}
@@ -218,29 +215,26 @@
       <div id="live-indicator" class="live-badge" style="display:none">
         <span class="live-dot"></span> LIVE
       </div>
-      <!-- Config bar always visible -->
-      <div id="topbar-config" style="display:flex;align-items:center;gap:6px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:4px 10px;flex-shrink:1;min-width:0;">
-        <i class="fas fa-link" style="color:#6366f1;font-size:.7rem;flex-shrink:0"></i>
-        <input id="tb-api-url" type="url"
-          placeholder="https://xxxxxx.execute-api.us-east-1.amazonaws.com/production"
-          autocomplete="off" spellcheck="false"
-          style="background:transparent;border:none;outline:none;color:var(--text);font-size:.7rem;font-family:'JetBrains Mono',monospace;width:290px;min-width:80px;"
-          title="API Endpoint URL" />
-        <span style="color:rgba(99,102,241,0.4);flex-shrink:0;font-size:.8rem">|</span>
+      <!-- ── Config Bar ── -->
+      <div id="tb-cfg" style="display:flex;align-items:center;gap:5px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.3);border-radius:8px;padding:4px 8px;flex:1;min-width:0;max-width:560px;">
+        <i class="fas fa-link" style="color:#818cf8;font-size:.7rem;flex-shrink:0"></i>
+        <input id="tb-url" type="url" autocomplete="off" spellcheck="false"
+          placeholder="https://xxxx.execute-api.us-east-1.amazonaws.com/production"
+          style="flex:2;min-width:0;background:transparent;border:none;outline:none;color:var(--text);font-size:.72rem;font-family:'JetBrains Mono',monospace;" />
+        <span style="color:rgba(99,102,241,.4);flex-shrink:0;font-size:.8rem">|</span>
         <i class="fas fa-key" style="color:#a78bfa;font-size:.7rem;flex-shrink:0"></i>
-        <input id="tb-api-key" type="password"
+        <input id="tb-key" type="password" autocomplete="off" spellcheck="false"
           placeholder="API Key"
-          autocomplete="off" spellcheck="false"
-          style="background:transparent;border:none;outline:none;color:var(--text);font-size:.7rem;font-family:'JetBrains Mono',monospace;width:120px;min-width:60px;"
-          title="API Key" />
-        <button onclick="topbarSave()"
-          style="background:#6366f1;border:none;color:#fff;border-radius:5px;padding:3px 10px;font-size:.7rem;font-weight:600;cursor:pointer;flex-shrink:0;transition:background .2s"
+          style="flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--text);font-size:.72rem;font-family:'JetBrains Mono',monospace;" />
+        <button onclick="_topbarSave()"
+          style="flex-shrink:0;background:#6366f1;border:none;color:#fff;border-radius:6px;padding:3px 10px;font-size:.7rem;font-weight:700;cursor:pointer;white-space:nowrap;"
           onmouseover="this.style.background='#4f46e5'" onmouseout="this.style.background='#6366f1'">
-          <i class="fas fa-save"></i> Save
+          <i class="fas fa-check"></i> Save
         </button>
-        <span id="tb-conn-status" style="font-size:.75rem;flex-shrink:0;width:16px"></span>
+        <span id="tb-st" style="flex-shrink:0;font-size:.75rem;width:16px;text-align:center"></span>
       </div>
-      <button onclick="refreshAll()" class="p-2 rounded-lg hover:bg-white/5 transition-colors" style="color:var(--text-muted)" title="Refresh">
+      <!-- ──────────── -->
+      <button onclick="refreshAll()" class="p-2 rounded-lg hover:bg-white/5 transition-colors" style="color:var(--text-muted);flex-shrink:0" title="Refresh">
         <i class="fas fa-sync-alt" id="refresh-icon"></i>
       </button>
       <div class="relative">
@@ -543,7 +537,7 @@
 <!-- ═══════════════════════════════════════════════════ -->
 <!-- SETTINGS PAGE                                       -->
 <!-- ═══════════════════════════════════════════════════ -->
-<div id="page-settings" class="page p-6">
+<div id="page-settings" class="page p-6" style="max-width:640px;margin:0 auto;">
   <div class="mb-6">
     <h2 class="text-xl font-bold mb-1" style="color:var(--text)"><i class="fas fa-cog mr-2" style="color:#6366f1"></i>API Settings</h2>
     <p class="text-sm" style="color:var(--text-muted)">Konfigurasi API endpoint dan key untuk koneksi ke backend AWS.</p>
@@ -747,20 +741,17 @@ function showPage(pg) {
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById(`page-${pg}`).classList.add('active');
   document.getElementById(`nav-${pg}`)?.classList.add('active');
-  // Reset scroll ke atas saat pindah halaman
-  const mc = document.querySelector('.main-content');
-  if (mc) mc.scrollTop = 0;
-  window.scrollTo(0, 0);
-  const mc2 = document.querySelector('.main-content');
-  if (mc2) mc2.scrollTo(0,0);
-  // Sync settings inputs saat buka settings
-  if (pg === 'settings') {
-    const su = document.getElementById('input-api-url');
-    const sk = document.getElementById('input-api-key');
-    if (su) su.value = CONFIG.API_URL || '';
-    if (sk) sk.value = CONFIG.API_KEY || '';
+  // Scroll ke atas
+  const _mc = document.querySelector('.main-content');
+  if (_mc) _mc.scrollTop = 0;
+  // Sync settings inputs
+  if (pg==='settings') {
+    const _u=document.getElementById('input-api-url');
+    const _k=document.getElementById('input-api-key');
+    if(_u) _u.value=CONFIG.API_URL||'';
+    if(_k) _k.value=CONFIG.API_KEY||'';
   }
-  topbarSyncFromConfig();
+  _topbarSync();
   const [t,s] = PAGE_META[pg]||[pg,''];
   document.getElementById('page-title').textContent = t;
   document.getElementById('page-subtitle').textContent = s;
@@ -1408,17 +1399,10 @@ async function refreshAll() {
 // INIT
 // ══════════════════════════════════════
 document.addEventListener('DOMContentLoaded',async()=>{
-  // Sync topbar inputs dari config
-  topbarSyncFromConfig();
   document.getElementById('sidebar-region').textContent = CONFIG.REGION;
-  // Jika API belum dikonfigurasi, langsung buka Settings
-  if (!CONFIG.API_URL || CONFIG.API_URL.includes('YOUR_API')) {
-    showPage('settings');
-    showToast('Masukkan API URL dan API Key terlebih dahulu', 'info');
-  } else {
-    await loadDashboard();
-    setTimeout(runHealthCheck, 1500);
-  }
+  _topbarSync();
+  await loadDashboard();
+  setTimeout(runHealthCheck, 1500);
   // Auto-start polling if there are running executions
   setTimeout(async()=>{
     await loadExecutions();
@@ -1562,90 +1546,37 @@ function checkConfigWarning() {
 }
 
 
-// ── Topbar config bar ────────────────────────────────────────
-function _tbSync() {
-  const u = document.getElementById('tb-api-url');
-  const k = document.getElementById('tb-api-key');
-  if (u) u.value = CONFIG.API_URL || '';
-  if (k) k.value = CONFIG.API_KEY || '';
+// ── Topbar config ───────────────────────────────────────────
+function _topbarSync() {
+  const u=document.getElementById('tb-url');
+  const k=document.getElementById('tb-key');
+  if(u) u.value=CONFIG.API_URL||'';
+  if(k) k.value=CONFIG.API_KEY||'';
 }
-
-async function topbarSave() {
-  const url = (document.getElementById('tb-api-url').value||'').trim().replace(/\/+$/,'');
-  const key = (document.getElementById('tb-api-key').value||'').trim();
-  const st  = document.getElementById('tb-conn-status');
-  if (!url) { showToast('URL wajib diisi','error'); return; }
-  if (!key) { showToast('API Key wajib diisi','error'); return; }
-
-  CONFIG.API_URL = url; CONFIG.API_KEY = key;
-  localStorage.setItem('techno_api_endpoint', url);
-  localStorage.setItem('techno_api_key', key);
-
-  // Sync ke settings page
-  const su = document.getElementById('input-api-url');
-  const sk = document.getElementById('input-api-key');
-  if (su) su.value = url;
-  if (sk) sk.value = key;
-
-  if (st) st.textContent = '⏳';
+async function _topbarSave() {
+  const url=(document.getElementById('tb-url').value||'').trim();
+  const key=(document.getElementById('tb-key').value||'').trim();
+  if(!url||!key){showToast('URL dan API Key wajib diisi','error');return;}
+  CONFIG.API_URL=url; CONFIG.API_KEY=key;
+  localStorage.setItem('techno_api_endpoint',url);
+  localStorage.setItem('techno_api_key',key);
+  const su=document.getElementById('input-api-url');
+  const sk=document.getElementById('input-api-key');
+  if(su) su.value=url; if(sk) sk.value=key;
+  const st=document.getElementById('tb-st');
+  if(st) st.textContent='⏳';
   try {
-    const r = await fetch(url+'/health',{headers:{'x-api-key':key},signal:AbortSignal.timeout(8000)});
-    if (r.ok || r.status===503) {
-      if (st) { st.textContent='✅'; setTimeout(()=>{st.textContent='';},4000); }
-      showToast('Config saved — connected!','success');
-      await loadDashboard(); runHealthCheck();
-    } else {
-      if (st) st.textContent='⚠️';
-      showToast(`Saved — HTTP ${r.status}`,'info');
-    }
-  } catch(e) {
-    if (st) st.textContent='❌';
-    showToast('Saved (koneksi gagal: '+e.message+')','error');
+    const r=await fetch(url+'/health',{headers:{'x-api-key':key},signal:AbortSignal.timeout(8000)});
+    if(st) st.textContent=(r.ok||r.status===503)?'✅':'⚠️';
+    showToast((r.ok||r.status===503)?'Connected!':'HTTP '+r.status,(r.ok||r.status===503)?'success':'info');
+    setTimeout(()=>{if(st)st.textContent='';},4000);
+    if(r.ok||r.status===503){await loadDashboard();runHealthCheck();}
+  } catch(e){
+    if(st) st.textContent='❌';
+    showToast('Gagal: '+e.message,'error');
   }
 }
-
-// Sync on load
-document.addEventListener('DOMContentLoaded', _tbSync);
-// ─────────────────────────────────────────────────────────────
-
-// ── Topbar config bar ──────────────────────────────────────────
-function topbarSyncFromConfig() {
-  const u = document.getElementById('tb-api-url');
-  const k = document.getElementById('tb-api-key');
-  if (u) u.value = CONFIG.API_URL || '';
-  if (k) k.value = CONFIG.API_KEY || '';
-}
-
-async function topbarSaveConfig() {
-  const url = (document.getElementById('tb-api-url').value || '').trim();
-  const key = (document.getElementById('tb-api-key').value || '').trim();
-  if (!url) { showToast('Masukkan API Endpoint URL', 'error'); return; }
-  if (!key) { showToast('Masukkan API Key', 'error'); return; }
-  CONFIG.API_URL = url; CONFIG.API_KEY = key;
-  localStorage.setItem('techno_api_endpoint', url);
-  localStorage.setItem('techno_api_key', key);
-  // Sync ke settings page
-  const su = document.getElementById('input-api-url');
-  const sk = document.getElementById('input-api-key');
-  if (su) su.value = url;
-  if (sk) sk.value = key;
-  const st = document.getElementById('tb-status');
-  if (st) st.textContent = '⏳';
-  try {
-    const r = await fetch(url + '/health', {
-      headers: {'x-api-key': key},
-      signal: AbortSignal.timeout(8000)
-    });
-    if (st) st.textContent = (r.ok || r.status===503) ? '✅' : '⚠️';
-    showToast((r.ok||r.status===503) ? 'Config saved — API connected!' : `Config saved — HTTP ${r.status}`, r.ok?'success':'info');
-    setTimeout(()=>{ if(st) st.textContent=''; }, 5000);
-    if (r.ok || r.status===503) { await loadDashboard(); runHealthCheck(); }
-  } catch(e) {
-    if (st) st.textContent = '❌';
-    showToast('Config saved, koneksi gagal: ' + e.message, 'error');
-  }
-}
-// ──────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────
 </script>
 </body>
 </html>

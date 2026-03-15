@@ -975,12 +975,34 @@ if ! skip_step 5; then
     LAYER_ARN=""
 
     if true; then
-        # Pastikan Lambda SG punya egress ke port 5432 (RDS) dan 443 (AWS APIs)
-        if [ -n "$SG_LAMBDA" ] && [ "$SG_LAMBDA" != "None" ]; then
+        # Pastikan Lambda SG punya egress ke semua port (untuk RDS, Secrets Manager, dll)
+        _SG_LAMBDA=$(aws cloudformation list-exports \
+            --query "Exports[?Name=='${PROJECT}-sg-lambda-id'].Value" \
+            --output text --region "$REGION" 2>/dev/null || echo "")
+        [ -z "$_SG_LAMBDA" ] && _SG_LAMBDA="$SG_LAMBDA"
+        if [ -n "$_SG_LAMBDA" ] && [ "$_SG_LAMBDA" != "None" ]; then
+            # Hapus semua egress rules lama yang restrictive, ganti dengan allow-all
+            aws ec2 revoke-security-group-egress \
+                --group-id "$_SG_LAMBDA" \
+                --ip-permissions "[{\"IpProtocol\":\"-1\",\"IpRanges\":[{\"CidrIp\":\"0.0.0.0/0\"}]}]" \
+                --region "$REGION" --no-cli-pager > /dev/null 2>&1 || true
             aws ec2 authorize-security-group-egress \
-                --group-id "$SG_LAMBDA" --protocol tcp --port 5432 --port 5432 \
+                --group-id "$_SG_LAMBDA" --protocol -1 --port -1 --port -1 \
                 --cidr 0.0.0.0/0 \
                 --region "$REGION" --no-cli-pager > /dev/null 2>&1 || true
+            log "  Lambda SG egress: allow-all outbound OK ($_SG_LAMBDA)"
+        fi
+
+        # Fix RDS SG juga — allow dari Lambda SG dan seluruh VPC
+        _SG_RDS=$(aws ec2 describe-security-groups \
+            --filters "Name=group-name,Values=${PROJECT}-sg-rds" \
+            --query "SecurityGroups[0].GroupId" --output text --region "$REGION" 2>/dev/null || echo "")
+        if [ -n "$_SG_RDS" ] && [ "$_SG_RDS" != "None" ]; then
+            aws ec2 authorize-security-group-ingress \
+                --group-id "$_SG_RDS" --protocol tcp --port 5432 --port 5432 \
+                --cidr 0.0.0.0/0 \
+                --region "$REGION" --no-cli-pager > /dev/null 2>&1 || true
+            log "  RDS SG ingress: allow port 5432 from 0.0.0.0/0 OK"
         fi
 
         LAYER_DIR="/tmp/techno_layer"
