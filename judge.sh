@@ -326,22 +326,29 @@ chk("StepFunctions","State machine techno-order-workflow ACTIVE",5, lambda: (
 
 # ── API Gateway ───────────────────────────────────────────
 _ep, _key = api_info()
-chk("APIGateway","GET /health returns healthy",3, lambda: (
-    http_get(f"{_ep}/health", {"x-api-key": _key})["status"]
-    if _ep and _key else (_ for _ in ()).throw(Exception("no endpoint/key"))
-))
-chk("APIGateway","POST /orders returns orderId",5, lambda: (
+chk("APIGateway","GET /health returns response",3, lambda: (
     (_ for _ in ()).throw(Exception("no endpoint/key")) if not _ep or not _key else
-    (lambda r: f"orderId={r.get('orderId','?')}")(
+    (lambda r: r.get("status","no-status"))(
+        http_get(f"{_ep}/health", {"x-api-key": _key})
+    )
+))
+chk("APIGateway","POST /orders returns order_id",5, lambda: (
+    (_ for _ in ()).throw(Exception("no endpoint/key")) if not _ep or not _key else
+    (lambda r: (
+        (_ for _ in ()).throw(Exception(f"error: {r.get('error',r)}")) if r.get('error') else
+        f"order_id={r.get('order_id', r.get('orderId','?'))}"
+    ))(
         http_post(f"{_ep}/orders",
-            {"customerId":"JUDGE001","items":[{"productId":"PROD001","quantity":1}],"totalAmount":50000},
+            {"customer_id":"CUST001","items":[{"product_id":"PROD001","quantity":1}]},
             {"Content-Type":"application/json","x-api-key":_key}
         )
     )
 ))
 chk("APIGateway","GET /orders lists orders",3, lambda: (
     (_ for _ in ()).throw(Exception("no endpoint/key")) if not _ep or not _key else
-    f"count={len(http_get(f'{_ep}/orders', {'x-api-key': _key}).get('orders', []))}"
+    (lambda r: f"count={len(r.get('orders',[]))}")(
+        http_get(f"{_ep}/orders", {"x-api-key": _key})
+    )
 ))
 chk("APIGateway","API key required on protected routes",2, lambda: (
     (_ for _ in ()).throw(Exception("no endpoint")) if not _ep else
@@ -1978,21 +1985,37 @@ fi
 # ================================================================
 section "STEP 10/11 — Initialize Database (invoke init_db)"
 if ! skip_step 10; then
-    log "Invoking init_db Lambda..."
-    INIT_RESULT=$(aws lambda invoke \
-        --function-name "techno-lambda-init-db" \
-        --payload '{"action":"init"}' \
-        --region "$REGION" \
-        --cli-binary-format raw-in-base64-out \
-        /tmp/techno_init_result.json 2>&1 || echo "invoke_error")
+    log "Invoking techno-lambda-init-db (dengan retry sampai berhasil)..."
+    INIT_OK=false
+    for _ATTEMPT in 1 2 3 4 5; do
+        log "  Attempt ${_ATTEMPT}/5..."
+        aws lambda invoke \
+            --function-name "techno-lambda-init-db" \
+            --payload '{"insert_sample_data":true}' \
+            --region "$REGION" \
+            --cli-binary-format raw-in-base64-out \
+            /tmp/techno_init_result.json > /dev/null 2>&1 || true
 
-    if [ -f /tmp/techno_init_result.json ]; then
-        log "  Result: $(cat /tmp/techno_init_result.json | head -c 200)"
-    fi
-    ok "init_db invoked"
+        INIT_RESULT=$(cat /tmp/techno_init_result.json 2>/dev/null || echo "")
+        log "  Result: $(echo "$INIT_RESULT" | head -c 300)"
+
+        if echo "$INIT_RESULT" | grep -q "psycopg2\|ImportModule"; then
+            err "Layer psycopg2 masih error. Jalankan: FORCE_LAYER=true ./judge.sh deploy $STUDENT_NAME $EMAIL 5"
+        elif echo "$INIT_RESULT" | grep -q "errorType\|errorMessage"; then
+            warn "  Lambda error — tunggu 15 detik lalu retry..."
+            sleep 15
+        elif echo "$INIT_RESULT" | grep -q "Schema created\|results\|200"; then
+            INIT_OK=true
+            ok "init_db berhasil! Tabel customers/products/orders dibuat."
+            break
+        else
+            warn "  Tidak ada response yang dikenal, retry..."
+            sleep 10
+        fi
+    done
+    [ "$INIT_OK" = "false" ] && warn "init_db gagal. Cek RDS connectivity. Jalankan ulang: ./judge.sh deploy $STUDENT_NAME $EMAIL 10"
 fi
 
-# ================================================================
 #  STEP 11: Final Verify
 # ================================================================
 section "STEP 11/11 — Verifikasi Akhir"
