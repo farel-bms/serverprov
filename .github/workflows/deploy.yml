@@ -240,70 +240,39 @@ jobs:
       - name: Create AppSpec and CodeDeploy deployment (Canary Blue/Green)
         id: codedeploy
         run: |
-          # Buat appspec.json ke file lalu upload S3, ATAU gunakan inline revision.
-          # Tulis dulu via printf agar tidak ada quoting issue di YAML.
           CUR="${{ steps.blue.outputs.CURRENT }}"
           TGT="${{ steps.publish.outputs.VERSION }}"
-          printf '{
-            "version": 0.0,
-            "Resources": [{
-              "techno-lambda-order-management": {
-                "Type": "AWS::Lambda::Function",
-                "Properties": {
-                  "Name": "techno-lambda-order-management",
-                  "Alias": "live",
-                  "CurrentVersion": "%s",
-                  "TargetVersion": "%s"
-                }
-              }
-            }]
-          }' "$CUR" "$TGT" > /tmp/appspec.json
-          echo "AppSpec content:"
-          cat /tmp/appspec.json
 
-          # Upload appspec ke S3 (bucket policy sudah allow voclabs PutObject)
-          S3_KEY="codedeploy/order-management/${{ github.sha }}.json"
-          aws s3 cp /tmp/appspec.json \
-            "s3://${{ secrets.S3_DEPLOYMENT_BUCKET }}/${S3_KEY}" \
-            --region ${{ env.AWS_REGION }} \
-            --no-cli-pager \
-            && echo "AppSpec uploaded to S3: ${S3_KEY}" \
-            || { echo "WARN: S3 upload gagal, coba inline revision"; USE_INLINE=true; }
+          # Tulis appspec.json pakai printf (compact, no spaces)
+          printf '{"version":0.0,"Resources":[{"techno-lambda-order-management":{"Type":"AWS::Lambda::Function","Properties":{"Name":"techno-lambda-order-management","Alias":"live","CurrentVersion":"%s","TargetVersion":"%s"}}}]}'             "$CUR" "$TGT" > /tmp/appspec.json
+          echo "AppSpec: $(cat /tmp/appspec.json)"
+          APPSPEC_SHA=$(sha256sum /tmp/appspec.json | cut -d' ' -f1)
 
           # Stop deployment aktif jika ada
-          ACTIVE=$(aws deploy list-deployments \
-            --application-name "$APP_NAME" \
-            --deployment-group-name "$DEPLOYMENT_GROUP" \
-            --include-only-statuses InProgress Created Ready \
-            --region ${{ env.AWS_REGION }} \
-            --query 'deployments[0]' --output text --no-cli-pager 2>/dev/null || echo "None")
+          ACTIVE=$(aws deploy list-deployments             --application-name "$APP_NAME"             --deployment-group-name "$DEPLOYMENT_GROUP"             --include-only-statuses InProgress Created Ready             --region ${{ env.AWS_REGION }}             --query 'deployments[0]' --output text --no-cli-pager 2>/dev/null || echo "None")
           if [ "$ACTIVE" != "None" ] && [ -n "$ACTIVE" ]; then
             echo "Stopping active deployment: $ACTIVE"
-            aws deploy stop-deployment \
-              --deployment-id "$ACTIVE" \
-              --auto-rollback-enabled \
-              --region ${{ env.AWS_REGION }} \
-              --no-cli-pager || true
+            aws deploy stop-deployment               --deployment-id "$ACTIVE"               --auto-rollback-enabled               --region ${{ env.AWS_REGION }}               --no-cli-pager || true
             sleep 5
           fi
 
-          # Pilih revision: S3 jika upload berhasil, inline jika gagal
-          if [ "${USE_INLINE:-false}" = "true" ]; then
-            APPSPEC_CONTENT=$(cat /tmp/appspec.json | tr -d '\n ' )
-            APPSPEC_SHA=$(echo -n "$APPSPEC_CONTENT" | sha256sum | cut -d' ' -f1)
-            REVISION="revisionType=AppSpecContent,appSpecContent={content=${APPSPEC_CONTENT},sha256=${APPSPEC_SHA}}"
-          else
-            REVISION="revisionType=S3,s3Location={bucket=${{ secrets.S3_DEPLOYMENT_BUCKET }},key=${S3_KEY},bundleType=JSON}"
-          fi
+          # Gunakan jq untuk build codedeploy_input.json — hindari heredoc Python di YAML
+          # jq sudah tersedia di semua ubuntu-latest GitHub Actions runner
+          jq -n             --arg app  "$APP_NAME"             --arg dg   "$DEPLOYMENT_GROUP"             --arg sha  "$APPSPEC_SHA"             --arg ver  "$TGT"             --rawfile content /tmp/appspec.json             '{
+              applicationName: $app,
+              deploymentGroupName: $dg,
+              deploymentConfigName: "CodeDeployDefault.LambdaCanary10Percent5Minutes",
+              revision: {
+                revisionType: "AppSpecContent",
+                appSpecContent: { content: $content, sha256: $sha }
+              },
+              description: ("Blue/Green order-management v" + $ver)
+            }' > /tmp/codedeploy_input.json
 
-          DEPLOYMENT_ID=$(aws deploy create-deployment \
-            --application-name "$APP_NAME" \
-            --deployment-group-name "$DEPLOYMENT_GROUP" \
-            --deployment-config-name "CodeDeployDefault.LambdaCanary10Percent5Minutes" \
-            --revision "${REVISION}" \
-            --description "Blue/Green order-management v${{ steps.publish.outputs.VERSION }}" \
-            --region ${{ env.AWS_REGION }} \
-            --query 'deploymentId' --output text --no-cli-pager)
+          echo "--- codedeploy_input.json ---"
+          cat /tmp/codedeploy_input.json
+
+          DEPLOYMENT_ID=$(aws deploy create-deployment             --cli-input-json file:///tmp/codedeploy_input.json             --region ${{ env.AWS_REGION }}             --query 'deploymentId' --output text --no-cli-pager)
           echo "DEPLOYMENT_ID=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
           echo "CodeDeploy Deployment: $DEPLOYMENT_ID"
 
