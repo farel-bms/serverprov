@@ -31,7 +31,7 @@ Serverprov/
 | CloudFormation (7 stacks) | Build from scratch via AWS Console |
 | Step Functions ASL | Build from scratch via Workflow Studio |
 | Lambda Layer | Build and upload manually |
-| Upload Lambda code | Upload to each function after stack deployment |
+| Upload Lambda code | Upload to each function after stack deployment. |
 
 ---
 
