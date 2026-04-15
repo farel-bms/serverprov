@@ -1,0 +1,4 @@
+*.yml
+!amplify.yml
+!appspec.yml
+!deploy.yml
